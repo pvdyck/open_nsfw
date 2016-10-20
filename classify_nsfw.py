@@ -37,6 +37,7 @@ def resize_image(data, sz=(256, 256)):
     fh_im.seek(0)
     return bytearray(fh_im.read())
 
+
 def caffe_preprocess_and_compute(pimg, caffe_transformer=None, caffe_net=None,
     output_layers=None):
     """
@@ -80,32 +81,17 @@ def caffe_preprocess_and_compute(pimg, caffe_transformer=None, caffe_net=None,
         return []
 
 
-def main(argv):
-    pycaffe_dir = os.path.dirname(__file__)
+def rel(name):
+    return os.path.join(os.path.dirname(__file__), name)
 
-    parser = argparse.ArgumentParser()
-    # Required arguments: input file.
-    parser.add_argument(
-        "input_file",
-        help="Path to the input image file"
-    )
 
-    # Optional arguments.
-    parser.add_argument(
-        "--model_def",
-        help="Model definition file."
-    )
-    parser.add_argument(
-        "--pretrained_model",
-        help="Trained model weights file."
-    )
-
-    args = parser.parse_args()
-    image_data = open(args.input_file).read()
+def classify(input_file, model_def=None, pretrained_model=None):
+    image_data = open(input_file).read()
 
     # Pre-load caffe model.
-    nsfw_net = caffe.Net(args.model_def,  # pylint: disable=invalid-name
-        args.pretrained_model, caffe.TEST)
+    model_def = model_def or rel('nsfw_model/deploy.prototxt')
+    pretrained_model = pretrained_model or rel('nsfw_model/resnet_50_1by2_nsfw.caffemodel')
+    nsfw_net = caffe.Net(model_def, pretrained_model, caffe.TEST)
 
     # Load transformer
     # Note that the parameters are hard-coded for best results
@@ -116,12 +102,37 @@ def main(argv):
     caffe_transformer.set_channel_swap('data', (2, 1, 0))  # swap channels from RGB to BGR
 
     # Classify.
-    scores = caffe_preprocess_and_compute(image_data, caffe_transformer=caffe_transformer, caffe_net=nsfw_net, output_layers=['prob'])
+    scores = caffe_preprocess_and_compute(image_data,
+        caffe_transformer=caffe_transformer,
+        caffe_net=nsfw_net,
+        output_layers=['prob'])
 
     # Scores is the array containing SFW / NSFW image probabilities
     # scores[1] indicates the NSFW probability
-    print "NSFW score:  " , scores[1]
+    return scores
 
+
+def main(argv):
+    pycaffe_dir = os.path.dirname(__file__)
+
+    parser = argparse.ArgumentParser()
+
+    # Required arguments: input file.
+    parser.add_argument(
+        "input_file",
+        help="Path to the input image file")
+
+    # Optional arguments.
+    parser.add_argument(
+        "--model_def",
+        help="Model definition file.")
+    parser.add_argument(
+        "--pretrained_model",
+        help="Trained model weights file.")
+
+    args = parser.parse_args()
+    result = classify(args.input_file, args.model_def, args.pretrained_model)
+    print("NSFW score: " + repr(result[1]))
 
 
 if __name__ == '__main__':
